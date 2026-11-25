@@ -1,0 +1,17 @@
+[project]
+name = "prisma2020-lab9"
+version = "1.0.0"
+description = "Analyse comparative et identification des Research Gaps (PRISMA 2020) - Lab 9"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = "-v"

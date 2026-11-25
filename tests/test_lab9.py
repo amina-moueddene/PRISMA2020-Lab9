@@ -1,14 +1,22 @@
-"""Tests du Lab 9.
+"""Tests complets du Lab 9 (unitaires, intégration bout-en-bout, CLI et concordance).
 
-Trois groupes :
-  * tests unitaires des fonctions de nettoyage et de n-grammes (étapes 3 et 9) ;
-  * tests des livrables (étapes 5 à 13) : fichiers présents, structure, seuils ;
-  * tests de concordance avec la revue systématique (effectifs, qualité, statistiques).
+Groupes de tests :
+  1. TestCleaningFunctions    : nettoyage de texte, abréviations, cas limites (None, NaN, vide) et n-grammes ;
+  2. TestInputData            : intégrité des 4 fichiers d'entrée et validation des schémas ;
+  3. TestDeliverables         : présence, structure et seuils de tous les livrables de output/ ;
+  4. TestEndToEndPipeline     : exécution isolée de run() dans un répertoire temporaire et exécution CLI ;
+  5. TestConsistencyWithReview: concordance exacte avec les résultats de la revue systématique.
 
-Lancer : python3 -m unittest discover -s tests -v
+Lancer :
+  python3 -m unittest discover -s tests -v
 """
+from __future__ import annotations
+
 import importlib.util
 import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -24,27 +32,48 @@ _spec.loader.exec_module(pipeline)
 
 
 class TestCleaningFunctions(unittest.TestCase):
-    """Étapes 3 et 9 : fonctions de nettoyage."""
+    """Étapes 3 et 9 : fonctions de nettoyage et génération de n-grammes."""
 
     def test_clean_text_expands_abbreviations(self):
         self.assertEqual(pipeline.clean_text("  SVM;   RF "), "support vector machine; random forest")
+        self.assertEqual(pipeline.clean_text("CNN & LDA / QDA"), "convolutional neural network & linear discriminant analysis / quadratic discriminant analysis")
+
+    def test_clean_text_handles_missing_and_empty_values(self):
         self.assertEqual(pipeline.clean_text(float("nan")), "")
+        self.assertEqual(pipeline.clean_text(None), "")
+        self.assertEqual(pipeline.clean_text("   "), "")
 
     def test_clean_limitation_text_removes_stopwords_and_short_tokens(self):
-        self.assertEqual(pipeline.clean_limitation_text("Aucun test de transfert entre sites"),
-                         "test transfert entre sites")
+        self.assertEqual(
+            pipeline.clean_limitation_text("Aucun test de transfert entre sites"),
+            "test transfert entre sites",
+        )
 
-    def test_get_ngrams(self):
+    def test_clean_limitation_text_handles_edge_cases(self):
+        self.assertEqual(pipeline.clean_limitation_text(None), "")
+        self.assertEqual(pipeline.clean_limitation_text(float("nan")), "")
+        self.assertEqual(pipeline.clean_limitation_text("123 !@# de la et"), "")
+
+    def test_get_ngrams_standard_and_edge_cases(self):
         self.assertEqual(pipeline.get_ngrams("a b c", 2), ["a b", "b c"])
+        self.assertEqual(pipeline.get_ngrams("a b c", 1), ["a", "b", "c"])
+        self.assertEqual(pipeline.get_ngrams("a b c", 3), ["a b c"])
         self.assertEqual(pipeline.get_ngrams("a", 2), [])
+        self.assertEqual(pipeline.get_ngrams("", 2), [])
+        with self.assertRaises(ValueError):
+            pipeline.get_ngrams("a b", 0)
 
 
 class TestInputData(unittest.TestCase):
-    """Étape 2 : fichiers d'entrée."""
+    """Étape 2 : fichiers d'entrée et validation des colonnes."""
 
     def test_input_files_have_22_studies(self):
-        for f in ["fulltext_extraction_22_studies.csv", "quality_assessment_Q1-Q10.csv",
-                  "studies_master_v2.csv", "lab8_consolidated_extraction_qa.csv"]:
+        for f in [
+            "fulltext_extraction_22_studies.csv",
+            "quality_assessment_Q1-Q10.csv",
+            "studies_master_v2.csv",
+            "lab8_consolidated_extraction_qa.csv",
+        ]:
             self.assertEqual(len(pd.read_csv(DATA / f, encoding="utf-8-sig")), 22, f)
 
     def test_loaded_frame_has_derived_columns(self):
@@ -54,14 +83,35 @@ class TestInputData(unittest.TestCase):
             self.assertIn(col, df.columns)
         self.assertFalse(df["Limitation"].eq("").any(), "Chaque étude doit avoir au moins une limitation")
 
+    def test_validate_input_dataframe_rejects_empty_or_missing_columns(self):
+        with self.assertRaises(ValueError):
+            pipeline.validate_input_dataframe(pd.DataFrame(), ["record"], "vide.csv")
+        with self.assertRaises(ValueError):
+            pipeline.validate_input_dataframe(pd.DataFrame({"record": [1]}), ["record", "study"], "incomplet.csv")
+
+    def test_load_raises_file_not_found_on_missing_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                pipeline.load(data_dir=Path(tmp))
+
 
 class TestDeliverables(unittest.TestCase):
     """Étapes 5 à 13 : livrables."""
 
     def test_required_files_exist(self):
-        for fname in ["tableau_comparatif.csv", "tableau_comparatif.md", "statistiques_performances.csv",
-                      "tendances_annuelles.png", "top_modeles.png", "validation_et_qa.png",
-                      "limitations_frequentes.csv", "potential_gaps.csv", "synthese_lab9.json", "verification.md"]:
+        for fname in [
+            "tableau_comparatif.csv",
+            "tableau_comparatif.md",
+            "statistiques_performances.csv",
+            "tendances_annuelles.png",
+            "top_modeles.png",
+            "validation_et_qa.png",
+            "limitations_frequentes.csv",
+            "potential_gaps.csv",
+            "research_gaps_et_pistes.md",
+            "synthese_lab9.json",
+            "verification.md",
+        ]:
             fpath = OUT / fname
             self.assertTrue(fpath.exists(), f"Fichier manquant : {fname}")
             self.assertGreater(fpath.stat().st_size, 0, f"Fichier vide : {fname}")
@@ -69,7 +119,7 @@ class TestDeliverables(unittest.TestCase):
     def test_figures_are_valid_png(self):
         for fname in ["tendances_annuelles.png", "top_modeles.png", "validation_et_qa.png"]:
             head = (OUT / fname).read_bytes()[:8]
-            self.assertEqual(head, b"\x89PNG\r\n\x1a\n", fname)
+            self.assertEqual(head, bytes([137, 80, 78, 71, 13, 10, 26, 10]), fname)
             self.assertGreater((OUT / fname).stat().st_size, 50_000, fname)
 
     def test_comparative_table(self):
@@ -97,6 +147,11 @@ class TestDeliverables(unittest.TestCase):
         self.assertTrue(gaps["Priorité_revue"].isin(["Haute", "Moyenne", "Basse"]).all())
         self.assertGreaterEqual((gaps["Priorité_revue"] == "Haute").sum(), 3)
 
+    def test_research_gaps_and_pistes_report_structure(self):
+        txt = (OUT / "research_gaps_et_pistes.md").read_text(encoding="utf-8")
+        for marker in ["Gap 1", "Gap 2", "Gap 3", "Piste 1", "Piste 2", "Piste 3"]:
+            self.assertIn(marker, txt)
+
     def test_verification_answers_all_questions(self):
         txt = (OUT / "verification.md").read_text(encoding="utf-8")
         for part in ["### Q1.", "### Q2.", "### Q3.", "Défi 1", "Défi 2"]:
@@ -107,6 +162,55 @@ class TestDeliverables(unittest.TestCase):
         for k in range(1, 14):
             self.assertIn(f"| {k} |", txt, f"Étape {k} absente du tableau des étapes du README")
         self.assertIn("Prérequis", txt)
+        self.assertIn("Défi 1", txt)
+        self.assertIn("Défi 2", txt)
+
+
+class TestEndToEndPipeline(unittest.TestCase):
+    """Tests d'intégration bout-en-bout et ligne de commande (CLI)."""
+
+    def test_run_reproduces_all_outputs_from_scratch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_out = Path(tmp)
+            summary = pipeline.run(data_dir=DATA, output_dir=tmp_out, quiet=True)
+            expected_files = [
+                "tableau_comparatif.csv",
+                "tableau_comparatif.md",
+                "statistiques_performances.csv",
+                "tendances_annuelles.png",
+                "top_modeles.png",
+                "validation_et_qa.png",
+                "limitations_frequentes.csv",
+                "potential_gaps.csv",
+                "research_gaps_et_pistes.md",
+                "synthese_lab9.json",
+            ]
+            for fname in expected_files:
+                self.assertTrue((tmp_out / fname).exists(), f"Livrable non généré : {fname}")
+                self.assertGreater((tmp_out / fname).stat().st_size, 0, fname)
+
+            committed_summary = json.loads((OUT / "synthese_lab9.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary, committed_summary)
+
+    def test_cli_execution_with_custom_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_out = Path(tmp)
+            res = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "analyze_and_gaps.py"),
+                    "--data-dir",
+                    str(DATA),
+                    "--output-dir",
+                    str(tmp_out),
+                    "--quiet",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            self.assertTrue((tmp_out / "synthese_lab9.json").exists())
 
 
 class TestConsistencyWithReview(unittest.TestCase):
@@ -131,8 +235,10 @@ class TestConsistencyWithReview(unittest.TestCase):
         self.assertEqual(s["by_reference_data"]["Laboratory (qPCR/PCR)"], 3)
         self.assertEqual(s["by_early_detection"]["Pre-symptomatic"], 1)
         algo = s["algorithm_counts_multilabel"]
-        self.assertEqual((algo["SVM"], algo["Random Forest"], algo["Boosting"],
-                          algo["Analyse discriminante"], algo["Processus gaussien"]), (12, 8, 6, 4, 2))
+        self.assertEqual(
+            (algo["SVM"], algo["Random Forest"], algo["Boosting"], algo["Analyse discriminante"], algo["Processus gaussien"]),
+            (12, 8, 6, 4, 2),
+        )
         self.assertEqual(s["studies_with_leakage_route"], 14)
         self.assertEqual(s["explainability"]["Aucune"], 10)
 
