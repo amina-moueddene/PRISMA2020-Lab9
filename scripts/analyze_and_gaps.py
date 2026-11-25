@@ -11,6 +11,15 @@ la revue (S3 extraction, S4 qualité, S5 données codées). Les tables de codage
 explicites ci-dessous (cible détaillée, algorithmes, voies de fuite,
 explicabilité) reproduisent le codage multi-label du manuscrit de la revue.
 
+Correspondance étapes du lab -> code :
+  Étape 1      README.md (introduction, prérequis, exécution)
+  Étapes 2–4   load()                chargement, nettoyage, classification
+  Étape 5      comparative_table()   output/tableau_comparatif.csv et .md
+  Étape 6      performance_stats()   output/statistiques_performances.csv
+  Étapes 7–8   figures()             output/tendances_annuelles.png, top_modeles.png, validation_et_qa.png
+  Étapes 9–10  gaps()                output/limitations_frequentes.csv, potential_gaps.csv
+  Étapes 11–13 output/verification.md et README.md (gaps argumentés, pistes, vérification)
+
 Usage : python3 scripts/analyze_and_gaps.py
 """
 import json
@@ -142,16 +151,33 @@ def clean_text(text):
 
 
 def clean_limitation_text(text):
+    """Étape 9 — Nettoie un libellé de limitation pour l'analyse lexicale.
+
+    Passe en minuscules, remplace tout caractère non alphabétique par un espace, puis retire
+    les mots vides français/anglais et les tokens de moins de 3 lettres.
+    Exemple : "Aucun test de transfert" -> "test transfert".
+    """
     text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ ]", " ", str(text).lower())
     return " ".join(t for t in text.split() if t not in STOP_WORDS_FR_EN and len(t) > 2)
 
 
 def get_ngrams(text, n=2):
+    """Étape 9 — Renvoie la liste des n-grammes (bigrammes par défaut) d'un texte déjà nettoyé."""
     tokens = text.split()
     return [" ".join(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
 
 
 def load():
+    """Étapes 2 à 4 — Charge, nettoie, structure et classe les 22 études.
+
+    * Étape 2 : lit la grille consolidée du Lab 8 (S3 + S4) et la table maître S5.
+    * Étape 3 : conserve les catégories normalisées de S5 (plateforme, modalité, cible, famille d'IA,
+      référence, détection précoce) et normalise les libellés libres (`clean_text`).
+    * Étape 4 : ajoute la cible détaillée, les algorithmes (multi-label), les voies de fuite,
+      la catégorie d'explicabilité et les limitations dérivées de Q1–Q10.
+
+    Renvoie un DataFrame de 22 lignes trié par année.
+    """
     df = pd.read_csv(DATA / "lab8_consolidated_extraction_qa.csv", encoding="utf-8-sig")
     sm = pd.read_csv(DATA / "studies_master_v2.csv", encoding="utf-8-sig")
     keep = ["record", "country", "platform", "modality", "target", "ai_family", "reference_data", "early_detection",
@@ -174,6 +200,7 @@ def load():
 
 
 def comparative_table(df):
+    """Étape 5 — Construit le tableau comparatif (CSV et Markdown) des 22 études."""
     comp = pd.DataFrame({
         "Étude": df["study"], "Année": df["year"], "Pays": df["country"], "Plateforme": df["platform"],
         "Modalité": df["modality"], "Cible": df["Cible_détaillée"], "Approche": df["ai_family"],
@@ -196,8 +223,13 @@ def comparative_table(df):
 
 
 def performance_stats(df):
-    """Statistiques descriptives (étape 6). La revue ne poole pas les performances :
-    ces chiffres sont descriptifs et séparés par type de métrique."""
+    """Étape 6 — Statistiques descriptives des performances et des scores qualité.
+
+    Les performances ne sont pas poolées dans la revue (tâches, unités et métriques différentes) :
+    les moyennes, écarts-types et médianes sont donc séparés par type de métrique (OA/accuracy, R²,
+    AUROC, sensibilité), par famille d'IA et par groupe de validation (V0–V2 / V3–V5).
+    Renvoie aussi le ρ de Spearman précision/validation et le test de Mann–Whitney sur les scores QA.
+    """
     d = df.copy()
     d["Type_métrique"] = d["metric"].replace({"OA": "OA / Accuracy", "Accuracy": "OA / Accuracy"})
     d["Groupe_validation"] = np.where(d["validation_level"].isin(["V0", "V1", "V2"]), "V0–V2", "V3–V5")
@@ -233,10 +265,18 @@ def performance_stats(df):
 
 
 def figures(df):
+    """Étapes 7 et 8 — Produit les trois figures (300 dpi) dans output/.
+
+    * tendances_annuelles.png : études par année (axe 2013–2026, période de recherche) et plateforme ;
+    * top_modeles.png : algorithmes évalués, comptage multi-label ;
+    * validation_et_qa.png : niveaux V0–V5 par famille d'IA et distribution des scores Q1–Q10.
+    """
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10,
                          "axes.spines.top": False, "axes.spines.right": False})
     # Figure 1 : publications par année et plateforme
-    years = list(range(int(df.year.min()), int(df.year.max()) + 1))
+    # Axe aligné sur la période de recherche (2013–2026), même si la première étude incluse date de 2015.
+    SEARCH_START = 2013
+    years = list(range(SEARCH_START, int(df.year.max()) + 1))
     ct = pd.crosstab(df.year, df.platform).reindex(index=years, fill_value=0)
     ct = ct[[c for c in ["Airborne", "UAV", "Satellite"] if c in ct.columns]]
     lab = {"Airborne": "Aéroporté", "UAV": "Drone (UAV)", "Satellite": "Satellite"}
@@ -249,7 +289,12 @@ def figures(df):
     for x, h in zip(ct.index.astype(str), bottom):
         if h > 0:
             ax.text(x, h + 0.08, str(int(h)), ha="center", va="bottom", fontweight="bold")
-    ax.set_title("Études incluses par année et par plateforme (n = 22 ; 2026 incomplète)", loc="left", fontweight="bold")
+    first = int(df.year.min())
+    if first > SEARCH_START:
+        ax.text((first - SEARCH_START - 1) / 2, 0.25, f"aucune étude incluse\n{SEARCH_START}–{first - 1}",
+                ha="center", va="bottom", fontsize=8.5, color="#666", style="italic")
+    ax.set_title(f"Études incluses par année et par plateforme (recherche {SEARCH_START}–2026 ; n = 22 ; 2026 incomplète)",
+                 loc="left", fontweight="bold", fontsize=11)
     ax.set_xlabel("Année de publication"); ax.set_ylabel("Nombre d'études")
     ax.set_ylim(0, bottom.max() + 1); ax.legend(frameon=False)
     fig.tight_layout(); fig.savefig(OUT / "tendances_annuelles.png", dpi=300); plt.close(fig)
@@ -290,6 +335,12 @@ def figures(df):
 
 
 def gaps(df):
+    """Étapes 9 et 10 — Bigrammes des limitations et limitations récurrentes (≥ 3 études).
+
+    Les bigrammes sont calculés à l'intérieur de chaque limitation. Une limitation devient un
+    gap potentiel lorsqu'elle concerne au moins 3 études distinctes ; chaque gap est relié
+    au gap et à la priorité correspondants de la revue.
+    """
     # Bigrammes calculés à l'intérieur de chaque limitation (pas à cheval sur deux limitations).
     big = Counter(b for t in df["Limitation"] for item in t.split(";")
                   for b in get_ngrams(clean_limitation_text(item), 2))
@@ -308,6 +359,7 @@ def gaps(df):
 
 
 def run():
+    """Exécute le pipeline complet (étapes 2 à 10) et écrit output/synthese_lab9.json."""
     OUT.mkdir(exist_ok=True)
     df = load()
     comparative_table(df)

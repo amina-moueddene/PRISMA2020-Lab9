@@ -1,50 +1,119 @@
 # Lab 9 : Analyser les études et identifier les Research Gaps (PRISMA 2020)
 
-**Sujet de la revue systématique :** *Machine learning and remote sensing for disease and stress detection in olive (Olea europaea L.)*.
-**Corpus :** 22 études (23 rapports) incluses après évaluation du texte intégral (Scopus et Web of Science, recherche du 15 novembre 2026).
-
-Toutes les données de ce dépôt proviennent des fichiers de la revue (S3 extraction, S4 qualité, S5 données codées) ; les chiffres ci-dessous sont identiques à ceux du manuscrit et sont recalculés par le script.
+**Revue systématique :** *Machine learning and remote sensing for disease and stress detection in olive (Olea europaea L.)*
+**Corpus :** 22 études (23 rapports) incluses après évaluation du texte intégral (Scopus et Web of Science Core Collection, recherche du 15 novembre 2026, période 2013–2026).
 
 ---
 
-## 1. Structure du dépôt
+## 1. Introduction
 
-```text
-PRISMA2020-Lab9-main/
-├── README.md
-├── data/
-│   ├── fulltext_extraction_22_studies.csv     # S3 : grille d'extraction du texte intégral (22 études)
-│   ├── quality_assessment_Q1-Q10.csv          # S4 : scores Q1–Q10 (/20)
-│   ├── studies_master_v2.csv                  # S5 : variables codées (plateforme, cible, V, DRL, scénarios, performance)
-│   └── lab8_consolidated_extraction_qa.csv    # S3 + S4 + plateforme normalisée (fusion du Lab 8)
-├── scripts/
-│   └── analyze_and_gaps.py                    # Pipeline complet (classification, stats, graphiques, n-grammes, gaps)
-├── output/
-│   ├── tableau_comparatif.csv / .md           # Tableau synthétique des 22 études (Étape 5)
-│   ├── statistiques_performances.csv          # Statistiques descriptives par approche et par niveau de validation (Étape 6)
-│   ├── tendances_annuelles.png                # Études par année et par plateforme (Étape 7)
-│   ├── top_modeles.png                        # Algorithmes évalués, comptage multi-label (Étape 8)
-│   ├── validation_et_qa.png                   # Niveaux V0–V5 par famille d'IA et distribution des scores QA
-│   ├── limitations_frequentes.csv             # Top 15 des bigrammes des limitations (Étape 9)
-│   ├── potential_gaps.csv                     # Limitations présentes dans ≥ 3 études, reliées aux gaps de la revue (Étape 10)
-│   ├── synthese_lab9.json                     # Résumé statistique pour audit automatisé
-│   └── verification.md                        # Questions de compréhension et défis pratiques (Étape 13)
-└── tests/
-    └── test_lab9.py                           # Tests : livrables et concordance des chiffres avec la revue
-```
+Ce lab transforme la grille d'extraction et l'évaluation de qualité des 22 études incluses (Lab 8) en une analyse comparative : tableau de synthèse, statistiques de performance, tendances temporelles, répartition des algorithmes, limitations récurrentes, puis research gaps argumentés et pistes de recherche.
 
-## 2. Exécution
+Toutes les données proviennent des fichiers de la revue (S3 extraction, S4 qualité, S5 données codées). Le script recalcule chaque chiffre, et les tests vérifient qu'ils sont identiques à ceux du manuscrit de la revue.
+
+**Objectifs du lab :**
+1. classer les études par approche (ML classique / deep learning), modalité, plateforme et cible ;
+2. comparer les performances rapportées sans les pooler (tâches et métriques différentes) ;
+3. distinguer une limitation isolée d'un research gap (limitation présente dans au moins 3 études) ;
+4. formuler des gaps argumentés et des pistes de recherche testables.
+
+## 2. Prérequis
+
+* **Python ≥ 3.10** (testé avec Python 3.13).
+* Bibliothèques listées dans `requirements.txt` : `pandas`, `numpy`, `scipy`, `matplotlib`.
+* Aucun accès réseau n'est nécessaire : toutes les données sont dans `data/`.
+
+## 3. Installation et exécution
 
 ```bash
-python3 scripts/analyze_and_gaps.py
-python3 -m unittest discover -s tests -v
+git clone https://github.com/amina-moueddene/PRISMA2020-Lab9.git
+cd PRISMA2020-Lab9
+python3 -m venv .venv && source .venv/bin/activate      # optionnel
+pip install -r requirements.txt
+python3 scripts/analyze_and_gaps.py                     # génère tous les fichiers de output/ (quelques secondes)
+python3 -m unittest discover -s tests -v                # 15 tests
 ```
 
-Dépendances : `pandas`, `numpy`, `scipy`, `matplotlib`.
+Le script est déterministe : deux exécutions produisent les mêmes fichiers.
 
----
+## 4. Structure du dépôt
 
-## 3. Synthèse quantitative du corpus (Étapes 2 à 8)
+```text
+PRISMA2020-Lab9/
+├── README.md
+├── requirements.txt
+├── data/                                      # Entrées (identiques aux fichiers de la revue)
+│   ├── fulltext_extraction_22_studies.csv     # S3 : extraction du texte intégral (28 variables)
+│   ├── quality_assessment_Q1-Q10.csv          # S4 : scores Q1–Q10 (0, 1 ou 2 ; total /20)
+│   ├── studies_master_v2.csv                  # S5 : variables codées (plateforme, cible, V, DRL, performance)
+│   └── lab8_consolidated_extraction_qa.csv    # S3 + S4 + plateforme normalisée (sortie du Lab 8)
+├── scripts/
+│   └── analyze_and_gaps.py                    # Pipeline complet, une fonction par groupe d'étapes
+├── output/                                    # Sorties générées (voir § 6)
+└── tests/
+    └── test_lab9.py                           # Tests unitaires, tests des livrables, tests de concordance
+```
+
+### Dictionnaire des principales variables d'entrée
+
+| Variable | Fichier | Signification |
+| :-- | :-- | :-- |
+| `record` | tous | Identifiant de la notice dans le registre de sélection (clé de jointure) |
+| `platform`, `modality` | S5 | Plateforme (Satellite, UAV, Airborne) et modalité (Multispectral, Multimodal, RGB, Hyperspectral) |
+| `target` | S5 | Cible (Vascular pathogen, Water/drought stress, Foliar disease, Mixed biotic/abiotic stress) |
+| `ai_family` | S5 | Famille d'IA (Classical ML, Deep learning) |
+| `reference_data` | S5 | Type de vérité terrain (qPCR/PCR, mesure physiologique, relevé visuel…) |
+| `validation_level` | S3/S5 | Rigueur de validation V0–V5 (V4 = test de transfert explicite entre sites ou années) |
+| `deployment_level` | S3/S5 | Maturité de déploiement DRL1–DRL5 |
+| `reported_performance`, `metric` | S5 | Performance principale telle que publiée et sa métrique (OA, R², AUROC…) |
+| `Q1`…`Q10`, `quality_total_out_of_20` | S4 | Items de qualité et score total |
+| `algorithms`, `transfer_test`, `explainability`, `data_code_availability` | S3 | Champs libres de l'extraction |
+
+## 5. Correspondance entre les étapes du lab et le code
+
+| Étape | Contenu | Où | Sortie |
+| :-: | :-- | :-- | :-- |
+| 1 | Introduction et prérequis | `README.md` §§ 1–3 | — |
+| 2 | Chargement du fichier d'extraction | `load()` | DataFrame de 22 études |
+| 3 | Nettoyage et structuration | `load()`, `clean_text()` | colonnes normalisées |
+| 4 | Classification par méthode, modalité, plateforme et cible | `load()` (tables `TARGET_DETAIL`, `ALGOS`, `XAI`, `LEAKAGE`) | colonnes `Cible_détaillée`, `Algorithmes`, `Explicabilité` |
+| 5 | Tableau comparatif | `comparative_table()` | `tableau_comparatif.csv`, `.md` |
+| 6 | Analyse des métriques et performances | `performance_stats()` | `statistiques_performances.csv` |
+| 7 | Tendances temporelles | `figures()` | `tendances_annuelles.png` |
+| 8 | Répartition des modèles | `figures()` | `top_modeles.png`, `validation_et_qa.png` |
+| 9 | Limitations récurrentes (n-grammes) | `clean_limitation_text()`, `get_ngrams()`, `gaps()` | `limitations_frequentes.csv` |
+| 10 | Limitation individuelle vs gap global (≥ 3 études) | `gaps()` | `potential_gaps.csv` |
+| 11 | Research gaps argumentés | `README.md` § 8, `verification.md` | — |
+| 12 | Pistes de recherche futures | `README.md` § 9, `verification.md` (Défi 2) | — |
+| 13 | Vérification (questions et défis) | `output/verification.md` | — |
+
+**Choix méthodologiques documentés dans le code :**
+* les performances ne sont pas moyennées toutes métriques confondues : les statistiques sont séparées par type de métrique, par famille d'IA et par groupe de validation ;
+* les algorithmes sont comptés en multi-label (modèle principal ou comparateur), comme dans la revue ;
+* les limitations sont dérivées de critères explicites (ex. `Q8 < 2` → pas de test de transfert ; voie de fuite identifiée dans le texte intégral) ; chaque gap retenu est relié au gap et à la priorité correspondants de la revue.
+
+## 6. Description des sorties
+
+| Fichier | Contenu | Comment le lire |
+| :-- | :-- | :-- |
+| `tableau_comparatif.csv` / `.md` | Une ligne par étude : plateforme, modalité, cible, approche, algorithmes, référence, V, DRL, QA, résultat principal, limitations | Les valeurs de performance ne se comparent pas d'une ligne à l'autre |
+| `statistiques_performances.csv` | n, moyenne, écart-type, médiane, min, max par regroupement et type de métrique ; scores QA par approche | Descriptif ; la revue ne poole pas les performances |
+| `tendances_annuelles.png` | Études par année (2013–2026) et plateforme | Aucune étude incluse avant 2015 ; 2026 incomplète |
+| `top_modeles.png` | Nombre d'études ayant évalué chaque algorithme | Comptage multi-label |
+| `validation_et_qa.png` | (A) niveaux V0–V5 par famille d'IA ; (B) histogramme des scores QA | Médiane 10,5/20 |
+| `limitations_frequentes.csv` | 15 bigrammes les plus fréquents | Exploration lexicale |
+| `potential_gaps.csv` | Limitations présentes dans ≥ 3 études, avec pourcentage, gap et priorité de la revue, études concernées | Base des gaps de l'étape 11 |
+| `synthese_lab9.json` | Tous les effectifs et statistiques clés | Utilisé par les tests |
+| `verification.md` | Réponses aux questions Q1–Q3 et défis 1–2 | — |
+
+### Tests (`tests/test_lab9.py`)
+
+* **Fonctions** : `clean_text`, `clean_limitation_text`, `get_ngrams`.
+* **Entrées** : 22 études dans chaque fichier ; colonnes dérivées présentes ; chaque étude a au moins une limitation.
+* **Livrables** : présence et validité des fichiers et figures, structure du tableau et des statistiques, bigrammes calculés limitation par limitation, seuil ≥ 3 et priorités des gaps, réponses complètes dans `verification.md`, étapes 1–13 documentées dans le README.
+* **Concordance avec la revue** : effectifs (plateformes, modalités, cibles, familles, V, DRL, références, algorithmes), scores qualité, ρ de Spearman et médianes de précision.
+
+## 7. Synthèse quantitative du corpus (Étapes 2 à 8)
 
 * **Corpus :** 22 études publiées entre 2015 et 2026 (3 en 2015–2020, 9 en 2021–2023, 10 en 2024–2026, période incomplète) ; 19 articles de revue et 3 communications de conférence. Une étude est décrite dans deux rapports (Kallel et al. 2022 = Makhloufi et al. 2022), comptée une fois.
 * **Pays de la zone d'étude :** Italie 7, Grèce 4, Maroc 4, Espagne 2, Tunisie 1, multi-pays 2, Australie 1, Arabie saoudite 1.
@@ -59,7 +128,7 @@ Dépendances : `pandas`, `numpy`, `scipy`, `matplotlib`.
 
 ---
 
-## 4. Research gaps argumentés (Étape 11)
+## 8. Research gaps argumentés (Étape 11)
 
 Les trois gaps retenus correspondent aux gaps de **priorité haute** de la revue (Section 6, Tableau des gaps).
 
@@ -80,7 +149,7 @@ Les trois gaps retenus correspondent aux gaps de **priorité haute** de la revue
 
 ---
 
-## 5. Pistes de recherche futures (Étape 12)
+## 9. Pistes de recherche futures (Étape 12)
 
 1. **Piste 1 — Évaluation par blocs spatio-temporels (cible : Gap 1).**
    * *Hypothèse :* l'écart entre performance en split aléatoire et en split par verger/région/saison est significatif et varie selon la plateforme.
