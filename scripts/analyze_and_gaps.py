@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Lab 9 — Analyser les études et identifier les Research Gaps (PRISMA 2020).
 
-Revue systématique : Machine learning and remote sensing for disease and stress detection in olive.
-Corpus : 22 études incluses extraites et évaluées au Lab 8.
+Revue systématique : Machine learning and remote sensing for disease and stress
+detection in olive (Olea europaea L.).
+Corpus : 22 études (23 rapports) incluses après lecture du texte intégral.
 
-Usage : python scripts/analyze_and_gaps.py
+Toutes les catégories (plateforme, modalité, cible, famille d'IA, niveaux V et DRL,
+données de référence, scores Q1–Q10) sont reprises telles quelles des fichiers de
+la revue (S3 extraction, S4 qualité, S5 données codées). Les tables de codage
+explicites ci-dessous (cible détaillée, algorithmes, voies de fuite,
+explicabilité) reproduisent le codage multi-label du manuscrit de la revue.
+
+Usage : python3 scripts/analyze_and_gaps.py
 """
 import json
 import re
@@ -16,17 +23,109 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
+from scipy import stats
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 OUT = ROOT / "output"
+
+# ---------------------------------------------------------------------------
+# Tables de codage (clé = numéro d'enregistrement du ledger de screening)
+# ---------------------------------------------------------------------------
+# Cible détaillée : le fichier maître code « Vascular pathogen » ; on la précise ici.
+TARGET_DETAIL = {
+    2: "Verticillium dahliae", 6: "Xylella fastidiosa", 9: "Xylella fastidiosa",
+    16: "Verticillium dahliae", 20: "Xylella fastidiosa", 28: "Xylella + Verticillium",
+    33: "Maladies foliaires", 37: "Stress mixte biotique/abiotique", 43: "Verticillium dahliae",
+    45: "Stress mixte biotique/abiotique", 46: "Xylella + Verticillium", 53: "Stress hydrique / sécheresse",
+    64: "Stress hydrique / sécheresse", 65: "Xylella fastidiosa", 73: "Stress hydrique / sécheresse",
+    74: "Stress hydrique / sécheresse", 83: "Verticillium dahliae", 85: "Stress hydrique / sécheresse",
+    93: "Stress hydrique / sécheresse", 109: "Verticillium dahliae", 125: "Maladies foliaires",
+    137: "Stress hydrique / sécheresse",
+}
+
+# Algorithmes évalués (modèle principal ou comparateur), comptage multi-label.
+ALGOS = {
+    2: ["SVM", "Analyse discriminante"], 6: ["SVM", "Boosting"], 9: ["Analyse discriminante"],
+    16: ["CNN"], 20: ["Analyse discriminante"], 28: ["Random Forest", "SVM"], 33: ["CNN"],
+    37: ["SVM", "Random Forest", "Boosting", "Analyse discriminante"],  # 12 classifieurs comparés (meilleur : QDA)
+    43: ["YOLO"], 45: ["Random Forest", "Boosting"], 46: ["SVM"],
+    53: ["Random Forest", "SVM", "Régression linéaire"],
+    64: ["Random Forest", "SVM", "Boosting", "kNN", "Arbre de décision", "Régression linéaire"],
+    65: ["SVM"], 73: ["Random Forest"],
+    74: ["Random Forest", "Boosting", "SVM", "Arbre de décision", "Naive Bayes"],
+    83: ["Processus gaussien"], 85: ["SVM"],
+    93: ["Boosting", "SVM", "Processus gaussien", "Random Forest", "Régression linéaire", "Réseau de neurones (MLP)"],
+    109: ["Réseau de neurones (MLP)"], 125: ["CNN"], 137: ["SVM"],
+}
+
+# Voies potentielles de fuite de données identifiées dans les textes intégraux.
+LEAKAGE = {
+    "Split aléatoire de pixels/ROI dans une même scène": [74, 85, 137, 37],
+    "Split aléatoire de mesures répétées des mêmes arbres/zones": [53, 64, 73, 93],
+    "Split au niveau image avec augmentation": [33, 125],
+    "Sur-échantillonnage sans ordre déclaré vis-à-vis du split": [45, 125],
+    "Classe confondue avec le site": [9],
+    "Réglage et évaluation finale non séparés, ou split non décrit": [2, 45, 16],
+}
+
+# Explicabilité.
+XAI = {
+    "Entrées interprétables par construction": [2, 6, 28, 46, 65, 83, 109],
+    "Importance des variables / sélection": [20, 45, 73, 93],
+    "Explication post-hoc (SHAP)": [64],
+}
+
+# Résultat principal tel que publié (non comparable d'une ligne à l'autre).
+HEADLINE = {
+    2: "SVM OA 79,2 %, κ 0,50 ; LDA OA 59,0 %", 6: "OA 80,9 %, κ 0,61 ; détection pré-visuelle",
+    9: "Sensibilité 0,98, précision 0,93", 16: "Délinéation des couronnes 0,89 ; maladie non évaluée",
+    20: "OA 0,69 ; 0,77 pour la classe précoce", 28: "Xf : OA 92 %, κ 0,80 ; Vd : OA 98 %, κ 0,70",
+    33: "Accuracy 0,971 (image)", 37: "AUROC 0,99 (QDA)", 43: "Résultats uniquement en graphique radar",
+    45: "ROC-AUC 0,977 (RF), 0,955 (XGBoost)", 46: "OA 0,63–0,83, κ 0,29–0,68",
+    53: "R² 0,78 (split aléatoire) ; transfert inter-annuel sans résultat utile",
+    64: "R² 0,75, RMSE 0,078", 65: "OA ≥ 0,74 interne ; rappel 0,10 inter-zones (2/20)",
+    73: "R² test 0,73", 74: "OA 95,9 %, κ 0,94", 83: "OA 0,77 ± 0,03, κ 0,55",
+    85: "OA 96,0 %, κ 0,92", 93: "R² 0,84 (aléatoire), 0,84 (zones), 0,82 (saison)",
+    109: "Aucune métrique (comparaison qualitative)", 125: "Accuracy 0,99 (image)", 137: "OA 0,927",
+}
 
 STOP_WORDS_FR_EN = {
     "de", "du", "des", "la", "le", "les", "et", "en", "un", "une", "au", "aux", "par", "pour",
     "sur", "dans", "avec", "sans", "non", "pas", "plus", "ou", "a", "à", "ce", "ces", "se", "sa",
     "son", "ses", "leur", "leurs", "qui", "que", "dont", "est", "sont", "the", "and", "of", "to",
     "in", "for", "on", "with", "not", "no", "by", "from", "as", "at", "an", "or", "is", "are",
+    "aucun", "aucune",
+}
+
+# Limitations dérivées de l'extraction et de l'évaluation qualité (une étude peut en cumuler plusieurs).
+LIMITATIONS = [
+    ("Aucun test de transfert explicite entre sites ou années", lambda r: r["Q8"] < 2),
+    ("Indépendance entraînement test non assurée", lambda r: r["Q5"] < 2),
+    ("Référence non confirmée par laboratoire ou mesure physiologique", lambda r: r["Q3"] < 2),
+    ("Voie potentielle de fuite de données", lambda r: r["n_leak"] > 0),
+    ("Représentativité limitée des sites et saisons", lambda r: r["Q2"] < 2),
+    ("Infection non dissociée du déficit hydrique", lambda r: r["target"] == "Vascular pathogen"),
+    ("Explicabilité absente des prédictions", lambda r: r["Explicabilité"] == "Aucune"),
+    ("Reproductibilité incomplète code données non publics", lambda r: r["Q9"] < 2),
+    ("Preuve de déploiement opérationnel absente", lambda r: r["Q10"] < 2),
+    ("Comparaison baseline absente", lambda r: r["Q7"] == 0),
+    ("Métrique unique ou absente", lambda r: r["Q6"] < 2),
+]
+
+# Correspondance avec la table des gaps de la revue (Section 6, priorités).
+GAP_MAP = {
+    "Aucun test de transfert explicite entre sites ou années": ("Few transfer tests", "Haute"),
+    "Indépendance entraînement test non assurée": ("Potential leakage", "Haute"),
+    "Voie potentielle de fuite de données": ("Potential leakage", "Haute"),
+    "Référence non confirmée par laboratoire ou mesure physiologique": ("Weak reference data", "Haute"),
+    "Infection non dissociée du déficit hydrique": ("Infection confounded with water status", "Haute"),
+    "Représentativité limitée des sites et saisons": ("Limited representativeness", "Moyenne"),
+    "Preuve de déploiement opérationnel absente": ("No link to decisions", "Moyenne"),
+    "Métrique unique ou absente": ("Unsuitable metrics for surveillance", "Moyenne"),
+    "Explicabilité absente des prédictions": ("Explainability not verified", "Basse"),
+    "Reproductibilité incomplète code données non publics": ("Limited reproducibility", "Basse"),
+    "Comparaison baseline absente": ("(reporting : sélection du modèle)", "Basse"),
 }
 
 
@@ -34,151 +133,17 @@ def clean_text(text):
     """Normalise une chaîne libre (minuscules, espaces, abréviations courantes)."""
     if pd.isna(text):
         return ""
-    text = str(text).lower().strip()
-    text = re.sub(r"\s+", " ", text)
-    replacements = {
-        "cnn": "convolutional neural network",
-        "lstm": "long short-term memory",
-        "svm": "support vector machine",
-        "rf": "random forest",
-        "lda": "linear discriminant analysis",
-        "qda": "quadratic discriminant analysis",
-    }
-    for abbr, full in replacements.items():
+    text = re.sub(r"\s+", " ", str(text).lower().strip())
+    for abbr, full in {"cnn": "convolutional neural network", "svm": "support vector machine",
+                       "rf": "random forest", "lda": "linear discriminant analysis",
+                       "qda": "quadratic discriminant analysis"}.items():
         text = re.sub(rf"\b{abbr}\b", full, text)
     return text
 
 
-def split_metrics(text):
-    """Découpe la chaîne de métriques en liste normalisée."""
-    if pd.isna(text) or not str(text).strip() or str(text).strip().lower() in ("none", "nr", "nan"):
-        return []
-    return [m.strip() for m in re.split(r"[;,]", str(text)) if m.strip()]
-
-
-def categorize_approach(row):
-    ai = str(row.get("ai_family", "")).lower()
-    alg = str(row.get("algorithms", "")).lower()
-    if "deep learning" in ai:
-        if "forest" in alg or "svm" in alg or "geostat" in alg:
-            return "Hybride (ML + DL)"
-        return "Deep Learning"
-    if "classical ml" in ai or "ann" in ai:
-        return "Machine Learning Classique"
-    return "Autre"
-
-
-def categorize_modality(mod):
-    m = str(mod).lower()
-    if "multimodal" in m or "+" in m:
-        return "Multimodal (Fusion)"
-    if "hyperspectral" in m:
-        return "Hyperspectral"
-    if "multispectral" in m:
-        return "Multispectral"
-    if "rgb" in m:
-        return "RGB"
-    return "Autre"
-
-
-def categorize_domain(target):
-    t = str(target).lower()
-    if "xylella" in t and "verticillium" in t:
-        return "Multi-pathogènes (Xylella + Verticillium)"
-    if "xylella" in t:
-        return "Xylella fastidiosa"
-    if "verticillium" in t:
-        return "Verticillium dahliae"
-    if "water" in t or "drought" in t or "physiological" in t:
-        return "Stress hydrique & abiotique"
-    if "leaf" in t or "disease" in t:
-        return "Maladies foliaires"
-    return "Stress mixte (biotique/abiotique)"
-
-
-def extract_numeric_metrics(raw_metrics, master_perf, master_metric):
-    txt = str(raw_metrics) if not pd.isna(raw_metrics) else ""
-    out = {"OA": np.nan, "Recall": np.nan, "Precision": np.nan, "F1": np.nan, "Kappa": np.nan, "R2": np.nan}
-
-    def norm_val(val_str):
-        v = float(val_str)
-        return round(v / 100.0, 4) if v > 1.0 else round(v, 4)
-
-    m_oa = re.search(r"(?:OA|overall accuracy|accuracy)[^0-9]{0,12}(\d+(?:\.\d+)?)", txt, re.I)
-    if m_oa:
-        out["OA"] = norm_val(m_oa.group(1))
-    elif str(master_metric).upper() == "OA" and not pd.isna(master_perf):
-        out["OA"] = norm_val(master_perf)
-
-    m_rec = re.search(r"(?:recall|sensitivity)[^0-9]{0,10}(\d+(?:\.\d+)?)", txt, re.I)
-    if m_rec:
-        out["Recall"] = norm_val(m_rec.group(1))
-    elif str(master_metric).lower() in ("recall", "sensitivity") and not pd.isna(master_perf):
-        out["Recall"] = norm_val(master_perf)
-
-    m_prec = re.search(r"precision[^0-9]{0,10}(\d+(?:\.\d+)?)", txt, re.I)
-    if m_prec:
-        out["Precision"] = norm_val(m_prec.group(1))
-
-    m_f1 = re.search(r"F1[^0-9]{0,25}(\d+(?:\.\d+)?)", txt, re.I)
-    if m_f1:
-        out["F1"] = norm_val(m_f1.group(1))
-
-    m_kap = re.search(r"(?:κ|kappa)[^0-9]{0,8}(\d+(?:\.\d+)?)", txt, re.I)
-    if m_kap:
-        out["Kappa"] = round(float(m_kap.group(1)), 4)
-
-    m_r2 = re.search(r"R²[^0-9]{0,8}(\d+(?:\.\d+)?)", txt, re.I)
-    if m_r2:
-        out["R2"] = round(float(m_r2.group(1)), 4)
-
-    return pd.Series(out)
-
-
-def derive_study_limitations(row):
-    lims = []
-    val = str(row.get("validation_level", ""))
-    tr = str(row.get("transfer_test", ""))
-    ref = str(row.get("reference_data", "")).lower()
-    early = str(row.get("early_detection", "")).lower()
-    code = str(row.get("data_code_availability", "")).lower()
-    exp = str(row.get("explainability", ""))
-    dep = str(row.get("deployment_level", ""))
-    met = str(row.get("metrics", "")).lower()
-
-    if val in ("V0", "V1", "V2", "V3") or tr.lower().startswith("none") or tr == "nan":
-        lims.append("Absence de transfert spatial ou temporel indépendant")
-    elif "recall fell to 10%" in tr.lower() or "poor" in tr.lower():
-        lims.append("Chute de généralisation inter-zones ou inter-années")
-
-    if "pcr" not in ref and "water potential" not in ref and "fluorescence" not in ref:
-        lims.append("Absence de validation biologique ou physiologique terrain")
-
-    if "symptomatic" in early or "not demonstrated" in early or "not addressed" in early or early == "nr":
-        lims.append("Détection limitée au stade symptomatique tardif")
-
-    if code in ("no", "nr", "nan") or "not" in code or "request" in code or "figures only" in code:
-        lims.append("Code et données non partagés (faible reproductibilité)")
-
-    if exp in ("nan", "NR", "") or pd.isna(row.get("explainability")):
-        lims.append("Manque d'explicabilité des prédictions")
-
-    if dep in ("DRL1", "DRL2"):
-        lims.append("Absence de déploiement opérationnel temps réel")
-
-    if "radar chart only" in met or met.startswith("none"):
-        lims.append("Métriques quantitatives incomplètes")
-
-    return " ; ".join(lims)
-
-
 def clean_limitation_text(text):
-    if pd.isna(text):
-        return ""
-    text = str(text).lower()
-    text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ ]", " ", text)
-    tokens = [t for t in text.split() if t not in STOP_WORDS_FR_EN and len(t) > 2]
-    return " ".join(tokens)
+    text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ ]", " ", str(text).lower())
+    return " ".join(t for t in text.split() if t not in STOP_WORDS_FR_EN and len(t) > 2)
 
 
 def get_ngrams(text, n=2):
@@ -186,173 +151,190 @@ def get_ngrams(text, n=2):
     return [" ".join(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
 
 
-def run():
-    OUT.mkdir(exist_ok=True)
-
-    df = pd.read_csv(DATA / "lab8_consolidated_extraction_qa.csv")
-    sm = pd.read_csv(DATA / "studies_master_v2.csv")[["record", "reported_performance", "metric"]]
-    df = df.merge(sm, on="record", how="left")
-
-    df["Approche_brut"] = df["ai_family"]
-    df["Modèle_brut"] = df["algorithms"]
-    df["Métriques_brut"] = df["metrics"]
-
-    df["Approche"] = df["ai_family"].apply(clean_text)
-    df["Modèle"] = df["algorithms"].apply(clean_text)
-    df["Métriques"] = df["metrics"].apply(clean_text)
-    df["Métriques_list"] = df["metrics"].apply(split_metrics)
-
-    df["Catégorie_Approche"] = df.apply(categorize_approach, axis=1)
-    df["Catégorie_Modalité"] = df["modality"].apply(categorize_modality)
-    df["Catégorie_Domaine"] = df["target"].apply(categorize_domain)
-
-    num_metrics = df.apply(
-        lambda r: extract_numeric_metrics(r["metrics"], r["reported_performance"], r["metric"]),
-        axis=1,
-    )
-    df = pd.concat([df, num_metrics], axis=1)
-
-    df["Limitation"] = df.apply(derive_study_limitations, axis=1)
+def load():
+    df = pd.read_csv(DATA / "lab8_consolidated_extraction_qa.csv", encoding="utf-8-sig")
+    sm = pd.read_csv(DATA / "studies_master_v2.csv", encoding="utf-8-sig")
+    keep = ["record", "country", "platform", "modality", "target", "ai_family", "reference_data", "early_detection",
+            "document_type", "scenario_b", "scenario_c", "scenario_d", "reported_performance", "metric"]
+    df = df.drop(columns=[c for c in ["platform", "modality", "target", "ai_family", "reference_data", "early_detection"]
+                          if c in df.columns])
+    df = df.merge(sm[keep].rename(columns={"country": "country_norm"}), on="record", how="left",
+                  validate="one_to_one")
+    assert len(df) == 22 and set(df.record) == set(TARGET_DETAIL)
+    df["Cible_détaillée"] = df["record"].map(TARGET_DETAIL)
+    df["Algorithmes"] = df["record"].map(lambda r: "; ".join(ALGOS[r]))
+    df["Voies_fuite"] = df["record"].map(lambda r: "; ".join(k for k, v in LEAKAGE.items() if r in v))
+    df["n_leak"] = df["record"].map(lambda r: sum(r in v for v in LEAKAGE.values()))
+    df["Explicabilité"] = df["record"].map(lambda r: next((k for k, v in XAI.items() if r in v), "Aucune"))
+    df["Résultat_principal"] = df["record"].map(HEADLINE)
+    df["Limitation"] = df.apply(lambda r: " ; ".join(lab for lab, f in LIMITATIONS if f(r)), axis=1)
     df["Limitation_clean"] = df["Limitation"].apply(clean_limitation_text)
+    df["Modèle"] = df["algorithms"].apply(clean_text)
+    return df.sort_values(["year", "record"]).reset_index(drop=True)
 
-    # Tableau comparatif (22 études)
-    comp_cols = pd.DataFrame({
-        "Étude": df["study"],
-        "Année": df["year"],
-        "Plateforme": df["platform_norm"],
-        "Modalité": df["Catégorie_Modalité"],
-        "Domaine_Cible": df["Catégorie_Domaine"],
-        "Approche": df["Catégorie_Approche"],
-        "Modèle": df["Modèle_brut"],
-        "Validation": df["validation_level"],
-        "Score_QA": df["quality_total_out_of_20"].astype(str) + "/20",
-        "Métriques": df["Métriques_brut"].fillna("Non rapporté"),
-        "Résultat_principal": df.apply(
-            lambda r: f"{r['metric']}={r['reported_performance']:.3f}"
-            if pd.notna(r["reported_performance"])
-            else "Qualitatif / Radar chart",
-            axis=1,
-        ),
-        "Limitation": df["Limitation"],
+
+def comparative_table(df):
+    comp = pd.DataFrame({
+        "Étude": df["study"], "Année": df["year"], "Pays": df["country"], "Plateforme": df["platform"],
+        "Modalité": df["modality"], "Cible": df["Cible_détaillée"], "Approche": df["ai_family"],
+        "Algorithmes": df["Algorithmes"], "Référence": df["reference_data"], "Validation": df["validation_level"],
+        "DRL": df["deployment_level"], "Score_QA": df["quality_total_out_of_20"].astype(str) + "/20",
+        "Résultat_principal": df["Résultat_principal"], "Limitation": df["Limitation"],
     })
-    comp_cols.to_csv(OUT / "tableau_comparatif.csv", index=False, encoding="utf-8-sig")
+    comp.to_csv(OUT / "tableau_comparatif.csv", index=False, encoding="utf-8-sig")
+    lines = ["# Tableau comparatif des 22 études incluses (PRISMA 2020 — Lab 9)", "",
+             "Valeurs de performance citées telles que publiées : tâches, unités et métriques diffèrent, "
+             "elles ne doivent pas être comparées d'une ligne à l'autre.", "",
+             "| Étude | Année | Plateforme | Modalité | Cible | Approche | Algorithmes | Val. | DRL | QA | Résultat principal |",
+             "| :--- | :---: | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |"]
+    for _, r in comp.iterrows():
+        lines.append(f"| {r['Étude']} | {r['Année']} | {r['Plateforme']} | {r['Modalité']} | {r['Cible']} | "
+                     f"{r['Approche']} | {r['Algorithmes']} | {r['Validation']} | {r['DRL']} | {r['Score_QA']} | "
+                     f"{r['Résultat_principal']} |")
+    (OUT / "tableau_comparatif.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return comp
 
-    md_lines = [
-        "# Tableau Comparatif des 22 Études Incluses (PRISMA 2020 — Lab 9)",
-        "",
-        "| Étude | Année | Plateforme | Modalité | Domaine Cible | Approche | Modèle | Val. | QA | Résultat principal | Limitations identifiées |",
-        "| :--- | :---: | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :--- | :--- |",
-    ]
-    for _, r in comp_cols.iterrows():
-        md_lines.append(
-            f"| {r['Étude']} | {r['Année']} | {r['Plateforme']} | {r['Modalité']} | "
-            f"{r['Domaine_Cible']} | {r['Approche']} | {r['Modèle']} | {r['Validation']} | "
-            f"{r['Score_QA']} | {r['Résultat_principal']} | {r['Limitation']} |"
-        )
-    (OUT / "tableau_comparatif.md").write_text("\n".join(md_lines) + "\n", encoding="utf-8")
 
-    # Statistiques descriptives des performances
-    stats_approche = df.groupby("Catégorie_Approche")[["OA", "Recall", "Kappa", "R2", "quality_total_out_of_20"]].agg(
-        ["count", "mean", "std", "median"]
-    )
-    stats_approche.to_csv(OUT / "statistiques_performances.csv", encoding="utf-8-sig")
+def performance_stats(df):
+    """Statistiques descriptives (étape 6). La revue ne poole pas les performances :
+    ces chiffres sont descriptifs et séparés par type de métrique."""
+    d = df.copy()
+    d["Type_métrique"] = d["metric"].replace({"OA": "OA / Accuracy", "Accuracy": "OA / Accuracy"})
+    d["Groupe_validation"] = np.where(d["validation_level"].isin(["V0", "V1", "V2"]), "V0–V2", "V3–V5")
+    rows = []
+    for (grp_name, col) in [("Approche", "ai_family"), ("Validation", "Groupe_validation")]:
+        for (g, m), sub in d.dropna(subset=["reported_performance"]).groupby([col, "Type_métrique"]):
+            v = sub["reported_performance"]
+            rows.append({"Regroupement": grp_name, "Groupe": g, "Type_métrique": m, "n_études": len(v),
+                         "moyenne": round(v.mean(), 3), "écart_type": round(v.std(), 3) if len(v) > 1 else np.nan,
+                         "médiane": round(v.median(), 3), "min": round(v.min(), 3), "max": round(v.max(), 3)})
+    for g, sub in d.groupby("ai_family"):
+        v = sub["quality_total_out_of_20"]
+        rows.append({"Regroupement": "Approche", "Groupe": g, "Type_métrique": "Score QA (/20)", "n_études": len(v),
+                     "moyenne": round(v.mean(), 2), "écart_type": round(v.std(), 2), "médiane": v.median(),
+                     "min": v.min(), "max": v.max()})
+    st = pd.DataFrame(rows)
+    st.to_csv(OUT / "statistiques_performances.csv", index=False, encoding="utf-8-sig")
 
-    # Graphique 1 : Tendances temporelles (2015–2026)
-    sns.set_theme(style="whitegrid")
-    plt.figure(figsize=(10, 5.5))
-    all_years = list(range(int(df["year"].min()), int(df["year"].max()) + 1))
-    year_counts = df["year"].value_counts().reindex(all_years, fill_value=0)
-    colors_yr = sns.color_palette("viridis", len(year_counts))
-    ax = sns.barplot(x=year_counts.index.astype(str), y=year_counts.values, palette=colors_yr)
-    for p in ax.patches:
-        h = int(p.get_height())
+    acc = d[d["Type_métrique"] == "OA / Accuracy"].dropna(subset=["reported_performance"])
+    vnum = acc["validation_level"].str[1].astype(int)
+    rho, p = stats.spearmanr(vnum, acc["reported_performance"])
+    qa_ml = d.loc[d.ai_family == "Classical ML", "quality_total_out_of_20"]
+    qa_dl = d.loc[d.ai_family == "Deep learning", "quality_total_out_of_20"]
+    mw = stats.mannwhitneyu(qa_ml, qa_dl, alternative="two-sided")
+    return {
+        "n_accuracy_studies": int(len(acc)), "spearman_rho_accuracy_vs_validation": round(float(rho), 2),
+        "spearman_p": round(float(p), 3),
+        "median_accuracy_V0_V2": round(float(acc[vnum <= 2]["reported_performance"].median()), 2),
+        "median_accuracy_V3_V4": round(float(acc[vnum >= 3]["reported_performance"].median()), 2),
+        "median_qa_classical_ml": float(qa_ml.median()), "median_qa_deep_learning": float(qa_dl.median()),
+        "mannwhitney_p_qa_ml_vs_dl": round(float(mw.pvalue), 2),
+    }
+
+
+def figures(df):
+    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10,
+                         "axes.spines.top": False, "axes.spines.right": False})
+    # Figure 1 : publications par année et plateforme
+    years = list(range(int(df.year.min()), int(df.year.max()) + 1))
+    ct = pd.crosstab(df.year, df.platform).reindex(index=years, fill_value=0)
+    ct = ct[[c for c in ["Airborne", "UAV", "Satellite"] if c in ct.columns]]
+    lab = {"Airborne": "Aéroporté", "UAV": "Drone (UAV)", "Satellite": "Satellite"}
+    col = {"Airborne": "#0072B2", "UAV": "#E69F00", "Satellite": "#009E73"}
+    fig, ax = plt.subplots(figsize=(10, 5))
+    bottom = np.zeros(len(ct))
+    for c in ct.columns:
+        ax.bar(ct.index.astype(str), ct[c].values, bottom=bottom, color=col[c], label=lab[c], width=0.7)
+        bottom += ct[c].values
+    for x, h in zip(ct.index.astype(str), bottom):
         if h > 0:
-            ax.annotate(f"{h}", (p.get_x() + p.get_width() / 2.0, h + 0.12), ha="center", va="bottom", fontweight="bold", fontsize=10)
-    plt.title("Évolution temporelle des publications incluses (n = 22 études, 2015–2026)", fontsize=13, fontweight="bold")
-    plt.xlabel("Année de publication", fontsize=11)
-    plt.ylabel("Nombre d'études incluses", fontsize=11)
-    plt.ylim(0, max(year_counts.values) + 1.2)
-    plt.tight_layout()
-    plt.savefig(OUT / "tendances_annuelles.png", dpi=200)
-    plt.close()
+            ax.text(x, h + 0.08, str(int(h)), ha="center", va="bottom", fontweight="bold")
+    ax.set_title("Études incluses par année et par plateforme (n = 22 ; 2026 incomplète)", loc="left", fontweight="bold")
+    ax.set_xlabel("Année de publication"); ax.set_ylabel("Nombre d'études")
+    ax.set_ylim(0, bottom.max() + 1); ax.legend(frameon=False)
+    fig.tight_layout(); fig.savefig(OUT / "tendances_annuelles.png", dpi=300); plt.close(fig)
 
-    # Graphique 2 : Répartition des familles de modèles
-    plt.figure(figsize=(11, 6))
-    model_mentions = Counter()
-    for alg in df["algorithms"]:
-        a = str(alg).lower()
-        if "svm" in a:
-            model_mentions["Support Vector Machine (SVM)"] += 1
-        if "random forest" in a:
-            model_mentions["Random Forest (RF)"] += 1
-        if "lda" in a or "qda" in a or "discriminant" in a:
-            model_mentions["Analyse Discriminante (LDA/QDA)"] += 1
-        if "cnn" in a or "resnet" in a or "mobilenet" in a:
-            model_mentions["CNN / ResNet / MobileNet"] += 1
-        if "xgboost" in a or "gradient boosting" in a or "gbm" in a or "gtb" in a:
-            model_mentions["Gradient Boosting (XGBoost/GBM)"] += 1
-        if "yolo" in a:
-            model_mentions["YOLOv5 (Détection d'objets)"] += 1
-        if "gaussian process" in a:
-            model_mentions["Gaussian Process (GP)"] += 1
-        if "ann" in a:
-            model_mentions["Artificial Neural Network (ANN)"] += 1
-        if "svr" in a or "mlr" in a or "lm" in a:
-            model_mentions["Régression (SVR / MLR / LM)"] += 1
+    # Figure 2 : algorithmes évalués (multi-label)
+    cnt = Counter(a for r in df.record for a in ALGOS[r])
+    s = pd.Series(cnt).sort_values()
+    dl = {"CNN", "YOLO"}
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    ax.barh(s.index, s.values, color=["#D55E00" if k in dl else "#0072B2" for k in s.index])
+    for i, v in enumerate(s.values):
+        ax.text(v + 0.1, i, str(v), va="center", fontweight="bold")
+    ax.set_xlabel("Nombre d'études ayant évalué l'algorithme (comptage multi-label)")
+    ax.set_title("Algorithmes évalués dans les 22 études\n(bleu : ML classique ; orange : deep learning)",
+                 loc="left", fontweight="bold", fontsize=10.5)
+    ax.set_xlim(0, s.max() + 1.5)
+    fig.tight_layout(); fig.savefig(OUT / "top_modeles.png", dpi=300); plt.close(fig)
 
-    mod_series = pd.Series(dict(model_mentions.most_common(10)))
-    colors_mod = sns.color_palette("magma", len(mod_series))
-    ax2 = sns.barplot(y=mod_series.index, x=mod_series.values, palette=colors_mod)
-    for p in ax2.patches:
-        w = int(p.get_width())
-        ax2.annotate(f"{w}", (w + 0.15, p.get_y() + p.get_height() / 2.0), va="center", fontweight="bold", fontsize=10)
-    plt.title("Top des familles de modèles utilisés dans les 22 études incluses", fontsize=13, fontweight="bold")
-    plt.xlabel("Nombre d'études utilisant le modèle", fontsize=11)
-    plt.ylabel("Famille de modèle", fontsize=11)
-    plt.xlim(0, max(mod_series.values) + 1.5)
-    plt.tight_layout()
-    plt.savefig(OUT / "top_modeles.png", dpi=200)
-    plt.close()
+    # Figure 3 : niveaux de validation par famille et distribution QA
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4.4))
+    lv = ["V0", "V1", "V2", "V3", "V4", "V5"]
+    vt = pd.crosstab(df.validation_level, df.ai_family).reindex(lv, fill_value=0)
+    b = np.zeros(len(lv))
+    for fam, c in [("Classical ML", "#0072B2"), ("Deep learning", "#D55E00")]:
+        a1.bar(lv, vt[fam].values, bottom=b, color=c, label="ML classique" if fam == "Classical ML" else "Deep learning")
+        b += vt[fam].values
+    for x, h in zip(lv, b):
+        a1.text(x, h + 0.1, str(int(h)), ha="center", fontweight="bold")
+    a1.set_title("(A) Niveau de rigueur de validation", loc="left", fontweight="bold")
+    a1.set_ylabel("Nombre d'études"); a1.legend(frameon=False); a1.set_ylim(0, b.max() + 1.5)
+    q = df.quality_total_out_of_20
+    a2.hist(q, bins=np.arange(3.5, 19.6, 1), color="#56B4E9", edgecolor="white")
+    a2.axvline(q.median(), color="#333", ls="--", lw=1.3)
+    a2.text(q.median() + 0.2, a2.get_ylim()[1] * 0.92, "médiane = " + f"{q.median():.1f}".replace(".", ",") + "/20", fontsize=9)
+    a2.set_title("(B) Score de qualité Q1–Q10 (/20)", loc="left", fontweight="bold")
+    a2.set_xlabel("Score total"); a2.set_ylabel("Nombre d'études")
+    fig.tight_layout(); fig.savefig(OUT / "validation_et_qa.png", dpi=300); plt.close(fig)
 
-    # Extraction des bigrammes fréquents sur les limitations
-    all_bigrams = []
-    for txt in df["Limitation_clean"]:
-        all_bigrams.extend(get_ngrams(txt, n=2))
-    bigram_counts = Counter(all_bigrams)
-    lim_df = pd.DataFrame(bigram_counts.most_common(15), columns=["Bigramme_Limitation", "Fréquence"])
-    lim_df.to_csv(OUT / "limitations_frequentes.csv", index=False, encoding="utf-8-sig")
 
-    # Comptage par étude distincte (potential_gaps.csv)
-    lim_to_studies = {}
+def gaps(df):
+    # Bigrammes calculés à l'intérieur de chaque limitation (pas à cheval sur deux limitations).
+    big = Counter(b for t in df["Limitation"] for item in t.split(";")
+                  for b in get_ngrams(clean_limitation_text(item), 2))
+    pd.DataFrame(big.most_common(15), columns=["Bigramme_Limitation", "Fréquence"]).to_csv(
+        OUT / "limitations_frequentes.csv", index=False, encoding="utf-8-sig")
+    lim_to = {}
     for _, r in df.iterrows():
         for item in [x.strip() for x in r["Limitation"].split(";") if x.strip()]:
-            lim_to_studies.setdefault(item, []).append(r["study"])
+            lim_to.setdefault(item, []).append(r["study"])
+    rows = [{"Limitation_Récurrente": k, "Nb_études": len(v), "Pourcentage_corpus": round(100 * len(v) / len(df), 1),
+             "Gap_revue": GAP_MAP[k][0], "Priorité_revue": GAP_MAP[k][1], "Études_concernées": ", ".join(v)}
+            for k, v in sorted(lim_to.items(), key=lambda x: -len(x[1])) if len(v) >= 3]
+    g = pd.DataFrame(rows)
+    g.to_csv(OUT / "potential_gaps.csv", index=False, encoding="utf-8-sig")
+    return g
 
-    gap_rows = []
-    for lim_label, studies_list in sorted(lim_to_studies.items(), key=lambda x: -len(x[1])):
-        nb = len(studies_list)
-        if nb >= 3:
-            gap_rows.append({
-                "Limitation_Récurrente": lim_label,
-                "Nb_études": nb,
-                "Pourcentage_corpus": round(100.0 * nb / len(df), 1),
-                "Études_concernées": ", ".join(studies_list),
-            })
-    potential_gaps_df = pd.DataFrame(gap_rows)
-    potential_gaps_df.to_csv(OUT / "potential_gaps.csv", index=False, encoding="utf-8-sig")
 
+def run():
+    OUT.mkdir(exist_ok=True)
+    df = load()
+    comparative_table(df)
+    perf = performance_stats(df)
+    figures(df)
+    g = gaps(df)
+    q = df.quality_total_out_of_20
+    vc = lambda c: {str(k): int(v) for k, v in df[c].value_counts().items()}
     summary = {
-        "total_studies": int(len(df)),
-        "by_approach": df["Catégorie_Approche"].value_counts().to_dict(),
-        "by_modality": df["Catégorie_Modalité"].value_counts().to_dict(),
-        "by_domain": df["Catégorie_Domaine"].value_counts().to_dict(),
-        "by_validation": df["validation_level"].value_counts().to_dict(),
-        "mean_qa_score": round(float(df["quality_total_out_of_20"].mean()), 2),
-        "median_qa_score": round(float(df["quality_total_out_of_20"].median()), 2),
-        "potential_gaps_count": int(len(potential_gaps_df)),
+        "total_studies": int(len(df)), "total_reports": 23,
+        "document_type": vc("document_type"),
+        "by_approach": vc("ai_family"), "by_platform": vc("platform"), "by_modality": vc("modality"),
+        "by_target": vc("target"), "by_target_detail": vc("Cible_détaillée"),
+        "by_reference_data": vc("reference_data"), "by_early_detection": vc("early_detection"),
+        "by_validation": vc("validation_level"), "by_deployment": vc("deployment_level"),
+        "by_country": vc("country_norm"), "by_year": {str(k): int(v) for k, v in df.year.value_counts().sort_index().items()},
+        "algorithm_counts_multilabel": dict(Counter(a for r in df.record for a in ALGOS[r]).most_common()),
+        "explainability": vc("Explicabilité"), "studies_with_leakage_route": int((df.n_leak > 0).sum()),
+        "mean_qa_score": round(float(q.mean()), 2), "median_qa_score": float(q.median()),
+        "qa_iqr": [float(q.quantile(0.25)), float(q.quantile(0.75))], "qa_range": [int(q.min()), int(q.max())],
+        "qa_ge_10": int((q >= 10).sum()),
+        "qa_items_fully_met": {f"Q{i}": int((df[f"Q{i}"] == 2).sum()) for i in range(1, 11)},
+        **perf,
+        "potential_gaps_count": int(len(g)),
     }
     (OUT / "synthese_lab9.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("Lab 9 exécuté avec succès :", json.dumps(summary, ensure_ascii=False))
+    print(json.dumps(summary, ensure_ascii=False, indent=1))
 
 
 if __name__ == "__main__":

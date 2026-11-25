@@ -1,22 +1,53 @@
 {
   "total_studies": 22,
+  "total_reports": 23,
+  "document_type": {
+    "Article": 19,
+    "Conference paper": 3
+  },
   "by_approach": {
-    "Machine Learning Classique": 18,
-    "Deep Learning": 4
+    "Classical ML": 18,
+    "Deep learning": 4
+  },
+  "by_platform": {
+    "Satellite": 10,
+    "UAV": 7,
+    "Airborne": 5
   },
   "by_modality": {
-    "Multimodal (Fusion)": 9,
-    "Multispectral": 8,
+    "Multispectral": 11,
+    "Multimodal": 6,
     "RGB": 3,
     "Hyperspectral": 2
   },
-  "by_domain": {
-    "Stress hydrique & abiotique": 7,
-    "Verticillium dahliae": 6,
+  "by_target": {
+    "Vascular pathogen": 11,
+    "Water/drought stress": 7,
+    "Foliar disease": 2,
+    "Mixed biotic/abiotic stress": 2
+  },
+  "by_target_detail": {
+    "Stress hydrique / sécheresse": 7,
+    "Verticillium dahliae": 5,
     "Xylella fastidiosa": 4,
-    "Multi-pathogènes (Xylella + Verticillium)": 2,
+    "Xylella + Verticillium": 2,
     "Maladies foliaires": 2,
-    "Stress mixte (biotique/abiotique)": 1
+    "Stress mixte biotique/abiotique": 2
+  },
+  "by_reference_data": {
+    "Visual or field survey": 9,
+    "Physiological measurement": 4,
+    "Laboratory (qPCR/PCR)": 3,
+    "Image annotation": 3,
+    "Field ROIs / not described": 2,
+    "Synthetic / none": 1
+  },
+  "by_early_detection": {
+    "Not applicable / not reported": 9,
+    "Early stage evaluated": 6,
+    "Symptomatic": 4,
+    "Early detection claimed, not evaluated": 2,
+    "Pre-symptomatic": 1
   },
   "by_validation": {
     "V3": 8,
@@ -25,7 +56,83 @@
     "V1": 2,
     "V0": 1
   },
+  "by_deployment": {
+    "DRL2": 11,
+    "DRL3": 8,
+    "DRL4": 3
+  },
+  "by_country": {
+    "Italy": 7,
+    "Greece": 4,
+    "Morocco": 4,
+    "Spain": 2,
+    "Multi-country": 2,
+    "Saudi Arabia": 1,
+    "Tunisia": 1,
+    "Australia": 1
+  },
+  "by_year": {
+    "2015": 1,
+    "2018": 1,
+    "2020": 1,
+    "2021": 3,
+    "2022": 3,
+    "2023": 3,
+    "2024": 2,
+    "2025": 4,
+    "2026": 4
+  },
+  "algorithm_counts_multilabel": {
+    "SVM": 12,
+    "Random Forest": 8,
+    "Boosting": 6,
+    "Analyse discriminante": 4,
+    "CNN": 3,
+    "Régression linéaire": 3,
+    "Réseau de neurones (MLP)": 2,
+    "Arbre de décision": 2,
+    "Processus gaussien": 2,
+    "YOLO": 1,
+    "kNN": 1,
+    "Naive Bayes": 1
+  },
+  "explainability": {
+    "Aucune": 10,
+    "Entrées interprétables par construction": 7,
+    "Importance des variables / sélection": 4,
+    "Explication post-hoc (SHAP)": 1
+  },
+  "studies_with_leakage_route": 14,
   "mean_qa_score": 11.14,
   "median_qa_score": 10.5,
-  "potential_gaps_count": 6
+  "qa_iqr": [
+    9.0,
+    14.0
+  ],
+  "qa_range": [
+    4,
+    18
+  ],
+  "qa_ge_10": 12,
+  "qa_items_fully_met": {
+    "Q1": 21,
+    "Q2": 10,
+    "Q3": 7,
+    "Q4": 7,
+    "Q5": 3,
+    "Q6": 19,
+    "Q7": 14,
+    "Q8": 3,
+    "Q9": 1,
+    "Q10": 0
+  },
+  "n_accuracy_studies": 12,
+  "spearman_rho_accuracy_vs_validation": -0.7,
+  "spearman_p": 0.011,
+  "median_accuracy_V0_V2": 0.96,
+  "median_accuracy_V3_V4": 0.8,
+  "median_qa_classical_ml": 12.0,
+  "median_qa_deep_learning": 8.5,
+  "mannwhitney_p_qa_ml_vs_dl": 0.09,
+  "potential_gaps_count": 11
 }

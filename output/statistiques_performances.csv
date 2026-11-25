@@ -1,5 +1,15 @@
-﻿,OA,OA,OA,OA,Recall,Recall,Recall,Recall,Kappa,Kappa,Kappa,Kappa,R2,R2,R2,R2,quality_total_out_of_20,quality_total_out_of_20,quality_total_out_of_20,quality_total_out_of_20
-,count,mean,std,median,count,mean,std,median,count,mean,std,median,count,mean,std,median,count,mean,std,median
-Catégorie_Approche,,,,,,,,,,,,,,,,,,,,
-Deep Learning,3,0.9502666666666667,0.05306800668324872,0.9708,1,0.5,,0.5,0,,,,0,,,,4,8.5,2.886751345948129,8.5
-Machine Learning Classique,11,0.8222909090909091,0.1482527129906597,0.809,2,0.54,0.6222539674441618,0.54,7,0.6425714285714286,0.23361781977042273,0.61,4,0.8205,0.07005474050103008,0.81,18,11.722222222222221,3.5613208976372395,12.0
+﻿Regroupement,Groupe,Type_métrique,n_études,moyenne,écart_type,médiane,min,max
+Approche,Classical ML,AUROC,2,0.984,0.009,0.984,0.977,0.99
+Approche,Classical ML,OA / Accuracy,10,0.84,0.096,0.82,0.69,0.96
+Approche,Classical ML,R²,4,0.776,0.049,0.766,0.73,0.843
+Approche,Classical ML,Sensitivity,1,0.98,,0.98,0.98,0.98
+Approche,Deep learning,OA / Accuracy,2,0.98,0.013,0.98,0.971,0.99
+Validation,V0–V2,AUROC,1,0.977,,0.977,0.977,0.977
+Validation,V0–V2,OA / Accuracy,6,0.93,0.081,0.96,0.77,0.99
+Validation,V0–V2,R²,1,0.73,,0.73,0.73,0.73
+Validation,V0–V2,Sensitivity,1,0.98,,0.98,0.98,0.98
+Validation,V3–V5,AUROC,1,0.99,,0.99,0.99,0.99
+Validation,V3–V5,OA / Accuracy,6,0.797,0.079,0.8,0.69,0.92
+Validation,V3–V5,R²,3,0.792,0.047,0.78,0.752,0.843
+Approche,Classical ML,Score QA (/20),18,11.72,3.56,12.0,4.0,18.0
+Approche,Deep learning,Score QA (/20),4,8.5,2.89,8.5,5.0,12.0
