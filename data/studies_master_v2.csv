@@ -1,0 +1,23 @@
+﻿record,first_author,year,document_type,country,platform,target,modality,reference_data,early_detection,ai_family,validation_level,deployment_level,scenario_b,scenario_c,scenario_d,quality_total_out_of_20,reported_performance,metric
+2,Calderón,2015,Article,Spain,Airborne,Vascular pathogen,Multimodal,Visual or field survey,Early stage evaluated,Classical ML,V3,DRL3,Yes,No,Yes,11,0.792,OA
+6,Zarco-Tejada,2018,Article,Italy,Airborne,Vascular pathogen,Multimodal,Laboratory (qPCR/PCR),Pre-symptomatic,Classical ML,V3,DRL3,Yes,Yes,Yes,16,0.809,OA
+9,Di Nisio,2020,Article,Italy,UAV,Vascular pathogen,Multispectral,Visual or field survey,Symptomatic,Classical ML,V2,DRL2,Yes,No,Yes,9,0.98,Sensitivity
+16,Blekos,2021,Article,Greece,UAV,Vascular pathogen,Multispectral,Synthetic / none,"Early detection claimed, not evaluated",Deep learning,V1,DRL2,No,No,Yes,5,,
+20,Castrignanò,2021,Article,Italy,UAV,Vascular pathogen,Multispectral,Visual or field survey,Early stage evaluated,Classical ML,V3,DRL3,Yes,No,Yes,10,0.69,OA
+28,Poblete,2021,Article,Multi-country,Airborne,Vascular pathogen,Multimodal,Laboratory (qPCR/PCR),Early stage evaluated,Classical ML,V3,DRL3,Yes,Yes,Yes,14,0.92,OA
+33,Ksibi,2022,Article,Saudi Arabia,UAV,Foliar disease,RGB,Image annotation,Symptomatic,Deep learning,V2,DRL2,Yes,No,Yes,9,0.971,Accuracy
+37,Navrozidis,2022,Article,Greece,Satellite,Mixed biotic/abiotic stress,Multispectral,Visual or field survey,Not applicable / not reported,Classical ML,V3,DRL3,Yes,No,Yes,14,0.99,AUROC
+43,Mamalis,2023,Article,Greece,UAV,Vascular pathogen,RGB,Image annotation,Symptomatic,Deep learning,V3,DRL3,Yes,No,Yes,12,,
+45,Navrozidis,2023,Article,Greece,UAV,Mixed biotic/abiotic stress,Hyperspectral,Visual or field survey,Not applicable / not reported,Classical ML,V1,DRL2,Yes,No,Yes,9,0.977,AUROC
+46,Poblete,2023,Article,Multi-country,Satellite,Vascular pathogen,Multispectral,Visual or field survey,Early stage evaluated,Classical ML,V3,DRL3,Yes,No,Yes,15,0.83,OA
+53,Garofalo,2024,Article,Italy,Satellite,Water/drought stress,Multispectral,Physiological measurement,Not applicable / not reported,Classical ML,V4,DRL4,Yes,Yes,Yes,15,0.78,R²
+64,Costanza,2025,Article,Italy,Satellite,Water/drought stress,Multispectral,Physiological measurement,Not applicable / not reported,Classical ML,V3,DRL3,Yes,Yes,Yes,14,0.752,R²
+65,D'Addabbo,2025,Article,Italy,Airborne,Vascular pathogen,Multimodal,Laboratory (qPCR/PCR),Early stage evaluated,Classical ML,V4,DRL4,Yes,Yes,Yes,14,0.74,OA
+73,Ottaviano,2025,Conference paper,Italy,Satellite,Water/drought stress,Multispectral,Physiological measurement,Not applicable / not reported,Classical ML,V2,DRL2,Yes,Yes,No,9,0.73,R²
+74,Oussaoui,2025,Article,Morocco,Satellite,Water/drought stress,Multispectral,Visual or field survey,Not applicable / not reported,Classical ML,V2,DRL2,Yes,No,Yes,13,0.959,OA
+83,Belwalkar,2026,Article,Australia,Airborne,Vascular pathogen,Hyperspectral,Visual or field survey,Early stage evaluated,Classical ML,V2,DRL2,Yes,No,Yes,9,0.77,OA
+85,Daiz,2026,Article,Morocco,Satellite,Water/drought stress,Multispectral,Field ROIs / not described,Not applicable / not reported,Classical ML,V2,DRL2,No,No,Yes,9,0.96,OA
+93,Martínez-Ruedas,2026,Article,Spain,Satellite,Water/drought stress,Multimodal,Physiological measurement,Not applicable / not reported,Classical ML,V4,DRL4,Yes,Yes,Yes,18,0.843,R²
+109,Kallel,2022,Conference paper,Tunisia,Satellite,Vascular pathogen,Multispectral,Visual or field survey,"Early detection claimed, not evaluated",Classical ML,V0,DRL2,Yes,No,No,4,,
+125,Raouhi,2024,Article,Morocco,UAV,Foliar disease,RGB,Image annotation,Symptomatic,Deep learning,V2,DRL2,Yes,No,Yes,8,0.99,Accuracy
+137,El Atiq,2026,Conference paper,Morocco,Satellite,Water/drought stress,Multimodal,Field ROIs / not described,Not applicable / not reported,Classical ML,V2,DRL2,No,No,No,8,0.927,OA

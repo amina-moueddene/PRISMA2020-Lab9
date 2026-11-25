@@ -1,45 +1,91 @@
-# Lab 9 : Synthèse et Research Gaps
+# Lab 9 : Analyser les études et identifier les Research Gaps (PRISMA 2020)
+
+**Sujet de la revue systématique :** *Machine learning and remote sensing for disease and stress detection in olive* (22 études incluses issues du Lab 8).
 
 ---
 
-## 1. Questions de compréhension
+## 1. Structure du dépôt
 
-**Q1. Expliquez pourquoi une limitation qui apparaît dans seulement une étude ne peut pas être considérée comme un research gap. Illustrez avec un exemple tiré de votre tableau.**
-Une limitation individuelle reflète une contrainte matérielle ou méthodologique propre à une expérience spécifique, tandis qu'un *research gap* identifie une lacune systémique dans la littérature scientifique qui bloque l'avancée du domaine. 
-*Exemple tiré de ma SLR :* Une étude (Belwalkar et al., 2026) mentionne comme limitation l'utilisation d'une seule date de vol pour capter les bandes d'absorption $O_2-A$. C'est une limitation individuelle. En revanche, le fait que 19 des 22 études du corpus (ex: Ksibi et al., Mamalis et al., Daiz et al.) n'effectuent aucun test de transfert géographique ou temporel (niveaux de validation V0 à V3) constitue un véritable *research gap*.
-
-**Q2. Décrivez la procédure exacte (en code) utilisée pour transformer la colonne Limitation en une liste de bigrammes et identifier les limitations récurrentes.**
-1. **Nettoyage textuel (`clean_limitation`) :** Conversion du texte en minuscules, utilisation d'expressions régulières (`re.sub`) pour ne garder que les caractères alphabétiques, et tokenisation (découpage en mots). 
-2. **Filtrage :** Suppression des mots vides (stopwords) via la bibliothèque `nltk`.
-3. **Génération des N-grammes (`get_ngrams`) :** Parcours de la liste de tokens avec une boucle glissante de taille `n=2` pour concaténer les mots adjacents (ex: `["données", "limitées"]`).
-4. **Comptage :** Agrégation de tous les bigrammes générés dans la colonne, puis utilisation de `collections.Counter` pour extraire les fréquences d'apparition (ex: `most_common(15)`).
-
-**Q3. Comment le graphique des tendances annuelles peut-il influencer le choix d'une direction de recherche future ? Donnez un exemple concret basé sur vos résultats.**
-L'analyse des tendances temporelles permet d'identifier les technologies émergentes ou les cibles récemment priorisées.
-*Exemple concret :* Mon analyse montre que l'utilisation du Deep Learning (4 études) est apparue récemment mais reste strictement cantonnée aux images RGB par drone (UAV) pour les symptômes visibles. Parallèlement, on observe un pic massif d'études sur le stress hydrique depuis 2024, dominé par le ML classique sur images satellites. Une direction de recherche future évidente est donc de combler le croisement manquant : **appliquer des architectures Deep Learning (ex: Vision Transformers) aux séries temporelles satellitaires pour la détection précoce du stress hydrique**.
+```text
+PRISMA2020-Lab9-main/
+├── README.md                              # Documentation complète et synthèse des 13 étapes du Lab 9
+├── data/                                  # Grilles d'extraction et d'évaluation du Lab 8 (22 études)
+│   ├── fulltext_extraction_22_studies.csv
+│   ├── lab8_consolidated_extraction_qa.csv
+│   ├── quality_assessment_Q1-Q10.csv
+│   └── studies_master_v2.csv
+├── scripts/
+│   └── analyze_and_gaps.py                # Pipeline complet (nettoyage, classification, stats, graphiques, n-grammes, gaps)
+├── output/
+│   ├── tableau_comparatif.csv             # Tableau synthétique automatisé des 22 études (Étape 5)
+│   ├── tableau_comparatif.md              # Version Markdown du tableau comparatif (Étape 5)
+│   ├── statistiques_performances.csv      # Moyenne, écart-type et médiane par approche (Étape 6)
+│   ├── tendances_annuelles.png            # Évolution temporelle des publications 2015–2026 (Étape 7)
+│   ├── top_modeles.png                    # Répartition des familles de modèles utilisés (Étape 8)
+│   ├── limitations_frequentes.csv         # Top 15 des bigrammes extraits des limitations (Étape 9)
+│   ├── potential_gaps.csv                 # Limitations récurrentes apparaissant dans ≥ 3 études (Étape 10)
+│   ├── synthese_lab9.json                 # Résumé statistique structuré pour audit automatisé
+│   └── verification.md                    # Réponses aux questions de compréhension et défis pratiques (Étape 13)
+└── tests/
+    └── test_lab9.py                       # Suite de tests unitaires vérifiant l'intégrité des livrables
+```
 
 ---
 
-## 2. Défis pratiques
+## 2. Exécution du pipeline et des tests
 
-### Défi 1 – Transformer une limitation récurrente en research gap
+```bash
+python3 scripts/analyze_and_gaps.py
+python3 -m unittest discover -s tests -v
+```
 
-**Gap identifié : Vulnérabilité aux fuites de données (Data Leakage) et absence de validation externe.**
+---
 
-*   **Justification :** 14 des 22 études incluses présentent au moins une faille méthodologique liée au *data leakage* (ex: split aléatoire ignorant l'autocorrélation spatiale des pixels, ou mélange de dates). Seules 3 études (ex: D'Addabbo et al., 2025 ; Martínez-Ruedas et al., 2026) effectuent un test explicite de transfert de modèle (niveau V4), et aucune n'utilise de jeu de données externe indépendant (V5). Les modèles Deep Learning du corpus sont particulièrement touchés (tous validés au niveau V1 ou V2).
-*   **Implication :** Les métriques rapportées dans la littérature (très souvent >95% en Accuracy globale) sont artificiellement gonflées. En conditions réelles d'opération, ces modèles risquent de s'effondrer, comme le prouve l'étude de D'Addabbo et al. où le rappel (recall) chute dramatiquement à 10% lors du transfert du modèle sur une nouvelle zone géographique à faible prévalence.
+## 3. Synthèse Quantitative du Corpus (Étapes 2 à 8)
 
-### Défi 2 – Proposer une nouvelle problématique de recherche
+* **Taille du corpus :** 22 études incluses (2015–2026) ; score de qualité QA moyen de **11,14 / 20** (médiane : **10,5 / 20**).
+* **Répartition par approche :**
+  * **Machine Learning Classique :** 18 études (81,8 %) — dominé par **SVM** (9 études), **Gradient Boosting / XGBoost / GBM** (5 études), **Analyse Discriminante LDA/QDA** (4 études) et **Random Forest** (4 études).
+  * **Deep Learning :** 4 études (18,2 %) — **CNN / ResNet / MobileNet** (3 études) et **YOLOv5** (1 étude).
+* **Répartition par modalité capteur :** Multimodal / Fusion (9 études), Multispectral (8 études), RGB (3 études), Hyperspectral (2 études).
+* **Répartition par domaine cible :** Stress hydrique & abiotique (7 études), *Verticillium dahliae* (6 études), *Xylella fastidiosa* (4 études), Multi-pathogènes *Xylella + Verticillium* (2 études), Maladies foliaires (2 études), Stress mixte (1 étude).
+* **Niveaux de validation (`V0`–`V4`) :** `V3` (8 études), `V2` (8 études), `V4` (3 études), `V1` (2 études), `V0` (1 étude).
 
-*À partir du gap identifié dans ma SLR concernant la confusion systématique entre l'infection vasculaire (*Xylella*, *Verticillium*) et le déficit hydrique (les deux provoquant la fermeture stomatique).*
+---
 
-*   **Problématique de recherche :** Comment dissocier l'empreinte spectrale induite par le déficit hydrique de celle causée par les infections vasculaires de l'olivier en utilisant une approche d'IA multimodale ?
-*   **Hypothèse :** L'utilisation de la température de la canopée comme variable de contrôle (pour isoler les arbres ayant un statut hydrique similaire), couplée à l'analyse de traits hyperspectraux physiologiques (ex: fluorescence), permet à un modèle de Machine Learning d'isoler le signal spécifique à l'infection pathogène.
-*   **Méthodologie :**
-    1. Mettre en place un plan expérimental factoriel : arbres infectés vs sains, croisés avec irrigation normale vs stress hydrique induit.
-    2. Collecter des données multimodales aéroportées (Thermique + Hyperspectral).
-    3. Entraîner un modèle de ML (ex: Random Forest) en forçant l'inclusion du CWSI (Crop Water Stress Index) issu du thermique comme covariable de contrôle.
-*   **Métriques d'évaluation :** 
-    * Matrice de confusion distinguant spécifiquement 3 classes : "Sain irrigué", "Sain stressé hydriquement", "Infecté".
-    * Taux de Faux Positifs (FPR) calculé spécifiquement sur le groupe "Sain stressé hydriquement" (pour prouver que la sécheresse n'est plus classée comme maladie).
-    * Sensibilité et Précision de la classe "Infecté".
+## 4. Research Gaps Argumentés (Étape 11)
+
+### Gap 1 — Déficit critique de généralisation spatiale et temporelle (`V4`) et chute des performances hors domaine
+* **Description :** 86,4 % des études (19/22) n'évaluent aucun transfert spatial inter-régions ou temporel inter-années indépendant (`V0`–`V3`), et les rares études testant un transfert réel (`V4`) observent un effondrement des performances hors domaine.
+* **Justification :** Calderón et al. (2015), Zarco-Tejada et al. (2018), Di Nisio et al. (2020), Poblete et al. (2021, 2023) et Ksibi et al. (2022) restent limités à des validations internes ou groupées (`V2`–`V3`). Parmi les études `V4`, **Garofalo et al. (2024)** rapportent l'échec du transfert inter-annuel et **D'Addabbo et al. (2025)** montrent une chute du rappel à **10 %** lors du transfert inter-zones (Gorgognolo $\rightarrow$ Polignano).
+* **Implication :** Les modèles entraînés sur un verger, un cultivar ou une campagne spécifique sur-apprennent les conditions locales et ne peuvent pas être déployés directement dans d'autres bassins oléicoles.
+
+### Gap 2 — Faible maturité opérationnelle (`DRL2`–`DRL3`) et quasi-absence de reproductibilité ouverte
+* **Description :** La quasi-totalité des travaux reste au stade de prototypes expérimentaux hors-ligne sans partage de code ni explicabilité agronomique.
+* **Justification :** **20 études sur 22 (90,9 %)** ne publient pas leur code source complet (seuls Zarco-Tejada et al. 2018 fournissent des scripts R sur GitHub et Martínez-Ruedas et al. 2026 leurs données sur GitLab) ; **19 études sur 22 (86,4 %)** plafonnent aux niveaux `DRL2`–`DRL3` et **9 études** n'offrent aucun mécanisme d'explicabilité des prédictions.
+* **Implication :** L'impossibilité de reproduire les prétraitements spectraux et les protocoles de séparation empêche tout benchmark équitable et freine l'adoption par les services phytosanitaires.
+
+### Gap 3 — Sous-exploitation du Deep Learning multimodal et rareté de la détection pré-symptomatique validée en laboratoire
+* **Description :** Les architectures Deep Learning sont cantonnées à l'imagerie RGB/multispectrale UAV au stade symptomatique sur labels visuels, tandis que la détection pré-symptomatique validée par qPCR reste quasi absente.
+* **Justification :** Les 4 études Deep Learning (**Blekos et al. 2021**, **Ksibi et al. 2022**, **Mamalis et al. 2023**, **Raouhi et al. 2024**) reposent uniquement sur des capteurs RGB/multispectraux UAV, une vérité terrain visuelle (0 PCR/qPCR) et des symptômes déjà visibles. À l'inverse, seules **Zarco-Tejada et al. (2018)** et **Poblete et al. (2021)** démontrent une détection pré-symptomatique/précoce ancrée biologiquement.
+* **Implication :** Détecter *Xylella fastidiosa* ou *Verticillium dahliae* uniquement après l'apparition de symptômes foliaires ne permet pas d'endiguer la dissémination épidémique dans les vergers.
+
+---
+
+## 5. Pistes de Recherche Futures (Étape 12)
+
+1. **Piste 1 — Adaptation de domaine guidée par la physique et benchmark spatio-temporel strict (`V4`) :**
+   * *Gap ciblé :* Gap 1 (échec de généralisation inter-zones et inter-années).
+   * *Hypothèse :* Le couplage d'une inversion de transfert radiatif (PROSAIL/DART) avec une adaptation de domaine non supervisée stabilisera le rappel au-dessus de 75 % lors du transfert vers des vergers et années inédits.
+   * *Méthodologie :* Construire un jeu de données multi-régions (Espagne, Italie, Maroc) avec protocole *leave-one-region-out* et *leave-one-year-out*, comparant XGBoost sur traits biophysiques et un Transformer spatio-temporel.
+   * *Métriques :* Recall sur classe infectée, F1-score macro, Kappa de Cohen et écart de généralisation $\Delta\text{Recall}_{\text{inter-zones}}$.
+2. **Piste 2 — Pipeline open-source reproductible couplant Sentinel-2/UAV et explicabilité SHAP (`DRL4`–`DRL5`) :**
+   * *Gap ciblé :* Gap 2 (faible reproductibilité et manque d'interprétabilité).
+   * *Hypothèse :* Un pipeline conteneurisé open-source associant séries temporelles Sentinel-2 (Google Earth Engine) et explications locales SHAP augmentera la confiance des agronomes et permettra une reproductibilité intégrale.
+   * *Méthodologie :* Publier sous licence libre le code Python, les splits normalisés et un modèle hybride (indices red-edge/thermiques + XGBoost/CNN léger) accompagné de cartes d'attribution SHAP par arbre.
+   * *Métriques :* Taux de reproduction par des tiers, latence d'inférence par hectare, F1-score et cohérence biophysique des scores SHAP.
+3. **Piste 3 — Fusion multimodale Deep Learning (optique + thermique + SAR) pour la détection pré-symptomatique ancrée par qPCR :**
+   * *Gap ciblé :* Gap 3 (absence de DL multimodal pré-symptomatique validé biologiquement).
+   * *Hypothèse :* Une architecture Deep Learning à attention croisée fusionnant imagerie multispectrale/thermique UAV et séries temporelles Sentinel-1/2 détectera les infections vasculaires au stade asymptomatique.
+   * *Méthodologie :* Mettre en place un suivi longitudinal avec tests qPCR répétés sur arbres asymptomatiques, entraîner un réseau multimodal (attention croisée optique-thermique-SAR) et le comparer à une baseline SVM/RF.
+   * *Métriques :* Sensibilité pré-symptomatique ($t - 3$ mois avant symptômes), taux de faux positifs (FP), AUROC et gain moyen d'anticipation en jours.

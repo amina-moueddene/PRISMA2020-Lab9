@@ -1,0 +1,5 @@
+﻿,OA,OA,OA,OA,Recall,Recall,Recall,Recall,Kappa,Kappa,Kappa,Kappa,R2,R2,R2,R2,quality_total_out_of_20,quality_total_out_of_20,quality_total_out_of_20,quality_total_out_of_20
+,count,mean,std,median,count,mean,std,median,count,mean,std,median,count,mean,std,median,count,mean,std,median
+Catégorie_Approche,,,,,,,,,,,,,,,,,,,,
+Deep Learning,3,0.9502666666666667,0.05306800668324872,0.9708,1,0.5,,0.5,0,,,,0,,,,4,8.5,2.886751345948129,8.5
+Machine Learning Classique,11,0.8222909090909091,0.1482527129906597,0.809,2,0.54,0.6222539674441618,0.54,7,0.6425714285714286,0.23361781977042273,0.61,4,0.8205,0.07005474050103008,0.81,18,11.722222222222221,3.5613208976372395,12.0

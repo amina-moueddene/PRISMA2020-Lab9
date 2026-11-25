@@ -1,0 +1,31 @@
+{
+  "total_studies": 22,
+  "by_approach": {
+    "Machine Learning Classique": 18,
+    "Deep Learning": 4
+  },
+  "by_modality": {
+    "Multimodal (Fusion)": 9,
+    "Multispectral": 8,
+    "RGB": 3,
+    "Hyperspectral": 2
+  },
+  "by_domain": {
+    "Stress hydrique & abiotique": 7,
+    "Verticillium dahliae": 6,
+    "Xylella fastidiosa": 4,
+    "Multi-pathogènes (Xylella + Verticillium)": 2,
+    "Maladies foliaires": 2,
+    "Stress mixte (biotique/abiotique)": 1
+  },
+  "by_validation": {
+    "V3": 8,
+    "V2": 8,
+    "V4": 3,
+    "V1": 2,
+    "V0": 1
+  },
+  "mean_qa_score": 11.14,
+  "median_qa_score": 10.5,
+  "potential_gaps_count": 6
+}
